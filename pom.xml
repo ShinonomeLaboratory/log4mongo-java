@@ -3,18 +3,16 @@
 		 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 		 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
 	<modelVersion>4.0.0</modelVersion>
-	<groupId>org.log4mongo</groupId>
-	<artifactId>log4mongo-java</artifactId>
-	<packaging>jar</packaging>
-	<name>log4mongo-java</name>
-	<description>Log4J Appender for MongoDB</description>
-	<version>0.9.0</version>
 
-	<parent>
-		<groupId>org.sonatype.oss</groupId>
-		<artifactId>oss-parent</artifactId>
-		<version>7</version>
-	</parent>
+    <!--This groupId for debug and developing using to avoid conflict with the dependency Maven Central-->
+	<groupId>com.github.tsingjyujing</groupId>
+	<artifactId>log4mongo-java</artifactId>
+	<name>log4mongo-java</name>
+
+    <version>1.0-SNAPSHOT</version>
+
+    <packaging>jar</packaging>
+	<description>Fork and changed from https://github.com/RobertStewart/log4mongo-java by Yuan Yifan</description>
 
 	<properties>
 		<project.build.sourceEncoding>
@@ -54,30 +52,47 @@
 			<name>Šimon Schierreich</name>
 			<email>simon.schierreich@messenger.cz</email>
 		</developer>
+
+		<developer>
+			<id>tsingjyujing</id>
+			<name>Yuan Yifan</name>
+			<email>tsingjyujing@163.com</email>
+		</developer>
 	</developers>
 
+    <!--In developing, change it after merge-->
 	<issueManagement>
 		<system>Github</system>
-		<url>https://github.com/log4mongo/log4mongo-java/issues</url>
+		<url>https://github.com/ShinonomeLaboratory/log4mongo-java</url>
 	</issueManagement>
 
 	<scm>
-		<connection>scm:git:git@github.com:log4mongo/log4mongo-java.git</connection>
-		<developerConnection>scm:git:git@github.com:log4mongo/log4mongo-java.git</developerConnection>
-		<url>scm:git:git@github.com:log4mongo/log4mongo-java</url>
+		<connection>scm:git:git@github.com:ShinonomeLaboratory/log4mongo-java.git</connection>
+		<developerConnection>scm:git:git@github.com:ShinonomeLaboratory/log4mongo-java.git</developerConnection>
+		<url>scm:git:git@github.com:ShinonomeLaboratory/log4mongo-java</url>
 	</scm>
 
 	<dependencies>
-		<dependency>
+
+        <!-- https://mvnrepository.com/artifact/com.google.guava/guava -->
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+            <version>24.0-jre</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
 			<groupId>log4j</groupId>
 			<artifactId>log4j</artifactId>
 			<version>1.2.17</version>
 			<scope>provided</scope>
 		</dependency>
+
 		<dependency>
 			<groupId>org.mongodb</groupId>
 			<artifactId>mongo-java-driver</artifactId>
-			<version>3.4.2</version>
+			<version>3.6.2</version>
 		</dependency>
 
 		<dependency>
@@ -86,12 +101,14 @@
 			<version>4.12</version>
 			<scope>test</scope>
 		</dependency>
+
 		<dependency>
 			<groupId>com.wombatnation</groupId>
 			<artifactId>privateer</artifactId>
 			<version>0.1.1</version>
 			<scope>test</scope>
 		</dependency>
+
 	</dependencies>
 
 	<build>
@@ -116,20 +133,7 @@
 				<artifactId>maven-release-plugin</artifactId>
 				<version>2.5.3</version>
 			</plugin>
-			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-gpg-plugin</artifactId>
-				<version>1.6</version>
-				<executions>
-					<execution>
-						<id>sign-artifacts</id>
-						<phase>verify</phase>
-						<goals>
-							<goal>sign</goal>
-						</goals>
-					</execution>
-				</executions>
-			</plugin>
+
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-source-plugin</artifactId>
@@ -146,26 +150,28 @@
 		</plugins>
 	</build>
 
-	<profiles>
-		<profile>
-			<id>release</id>
-			<build>
-				<plugins>
-					<plugin>
-						<groupId>org.apache.maven.plugins</groupId>
-						<artifactId>maven-javadoc-plugin</artifactId>
-						<executions>
-							<execution>
-								<id>attach-javadocs</id>
-								<goals>
-									<goal>jar</goal>
-								</goals>
-							</execution>
-						</executions>
-					</plugin>
-				</plugins>
-			</build>
-		</profile>
-	</profiles>
+    <profiles>
+        <profile>
+            <id>release</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-javadoc-plugin</artifactId>
+                        <version>3.0.0</version>
+                        <executions>
+                            <execution>
+                                <id>attach-javadocs</id>
+                                <goals>
+                                    <goal>jar</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+
 
 </project>

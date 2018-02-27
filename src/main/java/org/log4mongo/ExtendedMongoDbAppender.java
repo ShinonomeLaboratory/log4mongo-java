@@ -1,8 +1,7 @@
 package org.log4mongo;
 
-import com.mongodb.BasicDBObject;
-import com.mongodb.DBObject;
-import org.bson.BSONObject;
+import org.apache.log4j.spi.LoggingEvent;
+import org.bson.Document;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -20,7 +19,7 @@ import java.util.Map;
  */
 public class ExtendedMongoDbAppender extends MongoDbAppender {
 
-    private DBObject constants;
+    private Document constants;
 
     private Map<String, String> rootProperties = new LinkedHashMap<String, String>();
 
@@ -39,7 +38,7 @@ public class ExtendedMongoDbAppender extends MongoDbAppender {
      * Allows users to create custom properties to be added to the top level log event.
      */
     public void initTopLevelProperties() {
-        constants = new BasicDBObject();
+        constants = new Document();
         if (!rootProperties.isEmpty()) {
             constants.putAll(rootProperties);
         }
@@ -49,8 +48,7 @@ public class ExtendedMongoDbAppender extends MongoDbAppender {
      * This will handle spaces and empty values A = minus- @amp; C=equals= @amp; E==F
      * For XML, must escape the ampersand.
      *
-     * @param rootLevelProperties
-     *          key=value list of elements to be added to the root level log
+     * @param rootLevelProperties key=value list of elements to be added to the root level log
      */
     public void setRootLevelProperties(String rootLevelProperties) {
         for (String keyValue : rootLevelProperties.split(" *& *")) {
@@ -60,16 +58,17 @@ public class ExtendedMongoDbAppender extends MongoDbAppender {
     }
 
     /**
-     * @param bson
-     *            The BSON object to insert into a MongoDB database collection.
+     * @param generatedDocument The BSON object to insert into a MongoDB database collection.
+     * @param loggingEvent      raw data for external using
      */
     @Override
-    public void append(BSONObject bson) {
-        if (this.isInitialized() && bson != null) {
+    public void append(Document generatedDocument, LoggingEvent loggingEvent) {
+        if (this.isInitialized() && generatedDocument != null) {
             if (constants != null) {
-                bson.putAll(constants);
+                generatedDocument.putAll(constants);
             }
-            super.append(bson);
+            super.append(generatedDocument, loggingEvent);
         }
     }
+
 }

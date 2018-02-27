@@ -17,16 +17,17 @@
 
 package org.log4mongo;
 
+import com.google.common.collect.Lists;
 import com.mongodb.*;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
+import org.apache.log4j.Level;
 import org.apache.log4j.spi.ErrorCode;
-import org.bson.BSONObject;
+import org.apache.log4j.spi.LoggingEvent;
 import org.bson.Document;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.LinkedBlockingQueue;
 
 /**
  * Log4J Appender that writes log events into a MongoDB document oriented database. Log events are
@@ -39,7 +40,7 @@ import java.util.List;
  *
  * @author Peter Monks (pmonks@gmail.com)
  * @see <a href="http://logging.apache.org/log4j/1.2/apidocs/org/apache/log4j/Appender.html">Log4J
- *      Appender Interface</a>
+ * Appender Interface</a>
  * @see <a href="http://www.mongodb.org/">MongoDB</a>
  */
 public class MongoDbAppender extends BsonAppender {
@@ -51,6 +52,8 @@ public class MongoDbAppender extends BsonAppender {
     private final static String DEFAULT_MONGO_DB_DATABASE_NAME = "log4mongo";
 
     private final static String DEFAULT_MONGO_DB_COLLECTION_NAME = "logevents";
+
+    private final static String MAX_TTL_MILLS_SETTING = "1892160000000,1892160000000,1892160000000,1892160000000,1892160000000,1892160000000";
 
     private WriteConcern concern;
 
@@ -68,9 +71,13 @@ public class MongoDbAppender extends BsonAppender {
 
     private String writeConcern = null;
 
+    private String timeoutMills = MAX_TTL_MILLS_SETTING;
+
+    private String batchWriteSetting = "0";
+
     private MongoClient mongo = null;
 
-    private MongoCollection collection = null;
+    private MongoCollection<Document> collection = null;
 
     private boolean initialized = false;
 
@@ -80,6 +87,31 @@ public class MongoDbAppender extends BsonAppender {
     public boolean requiresLayout() {
         return (false);
     }
+
+    private long[] timeoutSetting = new long[6];
+
+    protected long getTimeoutSetting(Level loggingLevel) {
+        switch (loggingLevel.toString().toLowerCase()) {
+            case "fatal":
+                return timeoutSetting[5];
+            case "error":
+                return timeoutSetting[4];
+            case "warn":
+                return timeoutSetting[3];
+            case "info":
+                return timeoutSetting[2];
+            case "debug":
+                return timeoutSetting[1];
+            case "trace":
+                return timeoutSetting[0];
+            default:
+                return 1892160000L;
+        }
+    }
+
+    private int batchWriteCount;
+
+    private final List<Document> writtingQueue = Lists.newArrayList();
 
     /**
      * @see org.apache.log4j.AppenderSkeleton#activateOptions()
@@ -100,16 +132,56 @@ public class MongoDbAppender extends BsonAppender {
             }
 
             mongo = getMongo(getServerAddresses(hostname, port),
-                    (credentials != null) ? Arrays.asList(credentials) : null);
+                    (credentials != null) ? Lists.newArrayList(credentials) : null);
 
             MongoDatabase database = getDatabase(mongo, databaseName);
 
             setCollection(database.getCollection(collectionName));
 
+            final String[] splittedTimeout = getTimeoutMills().split(",");
+            if (splittedTimeout.length != 6) {
+                throw new RuntimeException("Invalid timeout setting, should be 6 positive integer splitted with \",\".");
+            }
+            for (int i = 0; i < 6; i++) {
+                timeoutSetting[i] = Long.parseLong(splittedTimeout[i]);
+                if (timeoutSetting[i] <= 0) {
+                    throw new RuntimeException("Invalid timeout setting, number should be positive integer.");
+                }
+            }
+
+            batchWriteCount = Integer.parseInt(batchWriteSetting);
+
             initialized = true;
         } catch (Exception e) {
             errorHandler.error("Unexpected exception while initialising MongoDbAppender.", e,
                     ErrorCode.GENERIC_FAILURE);
+        }
+    }
+
+    /**
+     * @see org.log4mongo.BsonAppender#append(Document, LoggingEvent)
+     * @param generatedDocument The BSON representation of a Logging Event that will be stored
+     * @param loggingEvent raw data for external using
+     */
+    @Override
+    public void append(Document generatedDocument, LoggingEvent loggingEvent) {
+        if (initialized && generatedDocument != null) {
+            try {
+                generatedDocument.append("timeout", new Date(getTimeoutSetting(loggingEvent.getLevel()) + System.currentTimeMillis()));
+                if (batchWriteCount <= 1) {
+                    getCollection().insertOne(generatedDocument);
+                } else {
+                    synchronized (writtingQueue) {
+                        writtingQueue.add(generatedDocument);
+                        if (writtingQueue.size() >= batchWriteCount) {
+                            getCollection().insertMany(writtingQueue);
+                            writtingQueue.clear();
+                        }
+                    }
+                }
+            } catch (MongoException e) {
+                errorHandler.error("Failed to insert document to MongoDB", e, ErrorCode.WRITE_FAILURE);
+            }
         }
     }
 
@@ -148,12 +220,10 @@ public class MongoDbAppender extends BsonAppender {
     /**
      * Note: this method is primarily intended for use by the unit tests.
      *
-     * @param collection
-     *            The MongoDB collection to use when logging events.
+     * @param collection The MongoDB collection to use when logging events.
      */
-    public void setCollection(final MongoCollection collection) {
+    public void setCollection(final MongoCollection<Document> collection) {
         assert collection != null : "collection must not be null";
-
         this.collection = collection;
     }
 
@@ -175,13 +245,11 @@ public class MongoDbAppender extends BsonAppender {
     }
 
     /**
-     * @param hostname
-     *            The MongoDB hostname to set <i>(must not be null, empty or blank)</i>.
+     * @param hostname The MongoDB hostname to set <i>(must not be null, empty or blank)</i>.
      */
     public void setHostname(final String hostname) {
-        assert hostname != null : "hostname must not be null";
-        assert hostname.trim().length() > 0 : "hostname must not be empty or blank";
-
+        if (hostname == null) throw new RuntimeException("hostname must not be null");
+        if (hostname.trim().length() <= 0) throw new RuntimeException("hostname must not be empty or blank");
         this.hostname = hostname;
     }
 
@@ -193,8 +261,7 @@ public class MongoDbAppender extends BsonAppender {
     }
 
     /**
-     * @param port
-     *            The port to set <i>(must not be null, empty or blank)</i>.
+     * @param port The port to set <i>(must not be null, empty or blank)</i>.
      */
     public void setPort(final String port) {
         assert port != null : "port must not be null";
@@ -211,9 +278,8 @@ public class MongoDbAppender extends BsonAppender {
     }
 
     /**
-     * @param databaseName
-     *            The database to use in the MongoDB server <i>(must not be null, empty or
-     *            blank)</i>.
+     * @param databaseName The database to use in the MongoDB server <i>(must not be null, empty or
+     *                     blank)</i>.
      */
     public void setDatabaseName(final String databaseName) {
         assert databaseName != null : "database must not be null";
@@ -224,16 +290,15 @@ public class MongoDbAppender extends BsonAppender {
 
     /**
      * @return The collection used within the database in the MongoDB server <i>(will not be null,
-     *         empty or blank)</i>.
+     * empty or blank)</i>.
      */
     public String getCollectionName() {
         return collectionName;
     }
 
     /**
-     * @param collectionName
-     *            The collection used within the database in the MongoDB server <i>(must not be
-     *            null, empty or blank)</i>.
+     * @param collectionName The collection used within the database in the MongoDB server <i>(must not be
+     *                       null, empty or blank)</i>.
      */
     public void setCollectionName(final String collectionName) {
         assert collectionName != null : "collection must not be null";
@@ -250,16 +315,14 @@ public class MongoDbAppender extends BsonAppender {
     }
 
     /**
-     * @param userName
-     *            The userName to use when authenticating with MongoDB <i>(may be null)</i>.
+     * @param userName The userName to use when authenticating with MongoDB <i>(may be null)</i>.
      */
     public void setUserName(final String userName) {
         this.userName = userName;
     }
 
     /**
-     * @param password
-     *            The password to use when authenticating with MongoDB <i>(may be null)</i>.
+     * @param password The password to use when authenticating with MongoDB <i>(may be null)</i>.
      */
     public void setPassword(final String password) {
         this.password = password;
@@ -273,9 +336,8 @@ public class MongoDbAppender extends BsonAppender {
     }
 
     /**
-     * @param writeConcern
-     *            The WriteConcern setting for Mongo.<i>(may be null). If null, set to default of
-     *            dbCollection's writeConcern.</i>
+     * @param writeConcern The WriteConcern setting for Mongo.<i>(may be null). If null, set to default of
+     *                     dbCollection's writeConcern.</i>
      */
     public void setWriteConcern(final String writeConcern) {
         this.writeConcern = writeConcern;
@@ -289,21 +351,6 @@ public class MongoDbAppender extends BsonAppender {
         return concern;
     }
 
-    /**
-     * @param bson
-     *            The BSON object to insert into a MongoDB database collection.
-     */
-    @Override
-    public void append(BSONObject bson) {
-        if (initialized && bson != null) {
-            try {
-                getCollection().insertOne(new Document(bson.toMap()));
-            } catch (MongoException e) {
-                errorHandler.error("Failed to insert document to MongoDB", e,
-                        ErrorCode.WRITE_FAILURE);
-            }
-        }
-    }
 
     /**
      * Returns true if appender was successfully initialized. If this method returns false, the
@@ -318,11 +365,10 @@ public class MongoDbAppender extends BsonAppender {
     /**
      * @return The MongoDB collection to which events are logged.
      */
-    protected MongoCollection getCollection() {
+    protected MongoCollection<Document> getCollection() {
         if (concern == null) {
             return collection;
         }
-
         return collection.withWriteConcern(concern);
     }
 
@@ -335,16 +381,13 @@ public class MongoDbAppender extends BsonAppender {
      * </li>
      * </ul>
      *
-     * @param hostname
-     *            Blank space delimited hostnames
-     * @param port
-     *            Blank space delimited ports. Must specify one port for all hosts or a port per
-     *            host.
-     *
+     * @param hostname Blank space delimited hostnames
+     * @param port     Blank space delimited ports. Must specify one port for all hosts or a port per
+     *                 host.
      * @return List of ServerAddresses to connect to
      */
     private List<ServerAddress> getServerAddresses(String hostname, String port) {
-        List<ServerAddress> addresses = new ArrayList<ServerAddress>();
+        List<ServerAddress> addresses = Lists.newArrayList();
 
         String[] hosts = hostname.split(" ");
         String[] ports = port.split(" ");
@@ -376,7 +419,6 @@ public class MongoDbAppender extends BsonAppender {
 
     private List<Integer> getPortNumbers(String[] ports) {
         List<Integer> portNumbers = new ArrayList<>();
-
         for (String port : ports) {
             try {
                 Integer portNum = Integer.valueOf(port.trim());
@@ -394,8 +436,23 @@ public class MongoDbAppender extends BsonAppender {
             }
 
         }
-
         return portNumbers;
     }
 
+
+    public String getTimeoutMills() {
+        return timeoutMills;
+    }
+
+    public void setTimeoutMills(String timeoutMills) {
+        this.timeoutMills = timeoutMills;
+    }
+
+    public String getBatchWriteSetting() {
+        return batchWriteSetting;
+    }
+
+    public void setBatchWriteSetting(String batchWriteSetting) {
+        this.batchWriteSetting = batchWriteSetting;
+    }
 }

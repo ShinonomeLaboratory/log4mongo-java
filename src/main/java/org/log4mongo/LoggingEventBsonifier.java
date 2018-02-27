@@ -18,7 +18,7 @@
 package org.log4mongo;
 
 import org.apache.log4j.spi.LoggingEvent;
-import org.bson.BSONObject;
+import org.bson.Document;
 
 /**
  * Interface implemented by classes that create a BSON representation of a Log4J LoggingEvent.
@@ -26,6 +26,11 @@ import org.bson.BSONObject;
  */
 public interface LoggingEventBsonifier {
 
-    BSONObject bsonify(LoggingEvent loggingEvent);
+    /**
+     * Convert LoggingEvent to Document for MongoDB driver to write
+     * @param loggingEvent logging information & data
+     * @return the document generated
+     */
+    Document bsonify(LoggingEvent loggingEvent);
 
 }

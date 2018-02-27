@@ -17,19 +17,16 @@
 
 package org.log4mongo;
 
-import com.mongodb.BasicDBList;
-import com.mongodb.BasicDBObject;
-import com.mongodb.DBObject;
+
+import com.google.common.collect.Lists;
 import org.apache.log4j.helpers.LogLog;
 import org.apache.log4j.spi.LocationInfo;
 import org.apache.log4j.spi.LoggingEvent;
 import org.apache.log4j.spi.ThrowableInformation;
-import org.bson.BSONObject;
-
+import org.bson.Document;
 import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -85,12 +82,15 @@ public class LoggingEventBsonifierImpl implements LoggingEventBsonifier {
     // MDC Properties
     private static final String KEY_MDC_PROPERTIES = "properties";
 
-    private final DBObject hostInfo = new BasicDBObject();
+    private final Document hostInfo = new Document();
 
     public LoggingEventBsonifierImpl() {
         setupNetworkInfo();
     }
 
+    /**
+     * Append hostname and ip into hostInfo
+     */
     private void setupNetworkInfo() {
         hostInfo.put(KEY_PROCESS, ManagementFactory.getRuntimeMXBean().getName());
         try {
@@ -104,16 +104,14 @@ public class LoggingEventBsonifierImpl implements LoggingEventBsonifier {
     /**
      * BSONifies a single Log4J LoggingEvent object.
      *
-     * @param loggingEvent
-     *            The LoggingEvent object to BSONify <i>(may be null)</i>.
-     *
+     * @param loggingEvent The LoggingEvent object to BSONify <i>(may be null)</i>.
      * @return The BSONified equivalent of the LoggingEvent object <i>(may be null)</i>.
      */
-    public BSONObject bsonify(final LoggingEvent loggingEvent) {
-        DBObject result = null;
+    public Document bsonify(final LoggingEvent loggingEvent) {
+        Document result = null;
 
         if (loggingEvent != null) {
-            result = new BasicDBObject();
+            result = new Document();
 
             result.put(KEY_TIMESTAMP, new Date(loggingEvent.getTimeStamp()));
             nullSafePut(result, KEY_LEVEL, loggingEvent.getLevel().toString());
@@ -131,17 +129,15 @@ public class LoggingEventBsonifierImpl implements LoggingEventBsonifier {
     }
 
     /**
-     * Adds MDC Properties to the DBObject.
+     * Adds MDC Properties to the Document.
      *
-     * @param bson
-     *            The root DBObject
-     * @param props
-     *            MDC Properties to be logged
+     * @param bson  The root Document
+     * @param props MDC Properties to be logged
      */
-    protected void addMDCInformation(DBObject bson, final Map<Object, Object> props) {
+    protected void addMDCInformation(Document bson, final Map<Object, Object> props) {
         if (props != null && props.size() > 0) {
 
-            BasicDBObject mdcProperties = new BasicDBObject();
+            Document mdcProperties = new Document();
             String key;
             // Copy MDC properties into document
             for (Map.Entry<Object, Object> entry : props.entrySet()) {
@@ -156,12 +152,10 @@ public class LoggingEventBsonifierImpl implements LoggingEventBsonifier {
     /**
      * Adds the LocationInfo object to an existing BSON object.
      *
-     * @param bson
-     *            The BSON object to add the location info to <i>(must not be null)</i>.
-     * @param locationInfo
-     *            The LocationInfo object to add to the BSON object <i>(may be null)</i>.
+     * @param bson         The BSON object to add the location info to <i>(must not be null)</i>.
+     * @param locationInfo The LocationInfo object to add to the BSON object <i>(may be null)</i>.
      */
-    protected void addLocationInformation(DBObject bson, final LocationInfo locationInfo) {
+    protected void addLocationInformation(Document bson, final LocationInfo locationInfo) {
         if (locationInfo != null) {
             nullSafePut(bson, KEY_FILE_NAME, locationInfo.getFileName());
             nullSafePut(bson, KEY_METHOD, locationInfo.getMethodName());
@@ -173,27 +167,22 @@ public class LoggingEventBsonifierImpl implements LoggingEventBsonifier {
     /**
      * Adds the ThrowableInformation object to an existing BSON object.
      *
-     * @param bson
-     *            The BSON object to add the throwable info to <i>(must not be null)</i>.
-     * @param throwableInfo
-     *            The ThrowableInformation object to add to the BSON object <i>(may be null)</i>.
+     * @param bson          The BSON object to add the throwable info to <i>(must not be null)</i>.
+     * @param throwableInfo The ThrowableInformation object to add to the BSON object <i>(may be null)</i>.
      */
     @SuppressWarnings(value = "unchecked")
-    protected void addThrowableInformation(DBObject bson, final ThrowableInformation throwableInfo) {
+    protected void addThrowableInformation(Document bson, final ThrowableInformation throwableInfo) {
         if (throwableInfo != null) {
             Throwable currentThrowable = throwableInfo.getThrowable();
-            List throwables = new BasicDBList();
+            List<Document> throwables = Lists.newArrayList();
 
             while (currentThrowable != null) {
-                DBObject throwableBson = bsonifyThrowable(currentThrowable);
-
+                Document throwableBson = bsonifyThrowable(currentThrowable);
                 if (throwableBson != null) {
                     throwables.add(throwableBson);
                 }
-
                 currentThrowable = currentThrowable.getCause();
             }
-
             if (throwables.size() > 0) {
                 bson.put(KEY_THROWABLES, throwables);
             }
@@ -203,27 +192,23 @@ public class LoggingEventBsonifierImpl implements LoggingEventBsonifier {
     /**
      * Adds the current process's host name, VM name and IP address
      *
-     * @param bson
-     *            A BSON object containing host name, VM name and IP address
+     * @param bson A BSON object containing host name, VM name and IP address
      */
-    protected void addHostnameInformation(DBObject bson) {
+    protected void addHostnameInformation(Document bson) {
         nullSafePut(bson, KEY_HOST, hostInfo);
     }
 
     /**
      * BSONifies the given Throwable.
      *
-     * @param throwable
-     *            The throwable object to BSONify <i>(may be null)</i>.
-     *
+     * @param throwable The throwable object to BSONify <i>(may be null)</i>.
      * @return The BSONified equivalent of the Throwable object <i>(may be null)</i>.
      */
-    protected DBObject bsonifyThrowable(final Throwable throwable) {
-        DBObject result = null;
+    protected Document bsonifyThrowable(final Throwable throwable) {
+        Document result = null;
 
         if (throwable != null) {
-            result = new BasicDBObject();
-
+            result = new Document();
             nullSafePut(result, KEY_EXCEPTION_MESSAGE, throwable.getMessage());
             nullSafePut(result, KEY_STACK_TRACE, bsonifyStackTrace(throwable.getStackTrace()));
         }
@@ -234,20 +219,16 @@ public class LoggingEventBsonifierImpl implements LoggingEventBsonifier {
     /**
      * BSONifies the given stack trace.
      *
-     * @param stackTrace
-     *            The stack trace object to BSONify <i>(may be null)</i>.
-     *
+     * @param stackTrace The stack trace object to BSONify <i>(may be null)</i>.
      * @return The BSONified equivalent of the stack trace object <i>(may be null)</i>.
      */
-    protected DBObject bsonifyStackTrace(final StackTraceElement[] stackTrace) {
-        BasicDBList result = null;
+    protected List<Document> bsonifyStackTrace(final StackTraceElement[] stackTrace) {
+        List<Document> result = null;
 
         if (stackTrace != null && stackTrace.length > 0) {
-            result = new BasicDBList();
-
+            result = Lists.newArrayList();
             for (StackTraceElement element : stackTrace) {
-                DBObject bson = bsonifyStackTraceElement(element);
-
+                Document bson = bsonifyStackTraceElement(element);
                 if (bson != null) {
                     result.add(bson);
                 }
@@ -260,16 +241,14 @@ public class LoggingEventBsonifierImpl implements LoggingEventBsonifier {
     /**
      * BSONifies the given stack trace element.
      *
-     * @param element
-     *            The stack trace element object to BSONify <i>(may be null)</i>.
-     *
+     * @param element The stack trace element object to BSONify <i>(may be null)</i>.
      * @return The BSONified equivalent of the stack trace element object <i>(may be null)</i>.
      */
-    protected DBObject bsonifyStackTraceElement(final StackTraceElement element) {
-        DBObject result = null;
+    protected Document bsonifyStackTraceElement(final StackTraceElement element) {
+        Document result = null;
 
         if (element != null) {
-            result = new BasicDBObject();
+            result = new Document();
 
             nullSafePut(result, KEY_FILE_NAME, element.getFileName());
             nullSafePut(result, KEY_METHOD, element.getMethodName());
@@ -283,33 +262,23 @@ public class LoggingEventBsonifierImpl implements LoggingEventBsonifier {
     /**
      * BSONifies the given class name.
      *
-     * @param className
-     *            The class name to BSONify <i>(may be null)</i>.
-     *
+     * @param className The class name to BSONify <i>(may be null)</i>.
      * @return The BSONified equivalent of the class name <i>(may be null)</i>.
      */
     @SuppressWarnings(value = "unchecked")
-    protected DBObject bsonifyClassName(final String className) {
-        DBObject result = null;
-
+    protected Document bsonifyClassName(final String className) {
+        Document result = null;
         if (className != null && className.trim().length() > 0) {
-            result = new BasicDBObject();
-
+            result = new Document();
             result.put(KEY_FQCN, className);
-
-            List packageComponents = new BasicDBList();
-            String[] packageAndClassName = className.split("\\.");
-
-            packageComponents.addAll(Arrays.asList(packageAndClassName));
+            List<String> packageComponents = Lists.newArrayList(className.split("\\."));
             // Requires Java 6
             // packageComponents.addAll(Arrays.asList(Arrays.copyOf(packageAndClassName,
             // packageAndClassName.length - 1)));
-
             if (packageComponents.size() > 0) {
                 result.put(KEY_PACKAGE, packageComponents);
             }
-
-            result.put(KEY_CLASS_NAME, packageAndClassName[packageAndClassName.length - 1]);
+            result.put(KEY_CLASS_NAME, packageComponents.get(packageComponents.size() - 1));
         }
 
         return (result);
@@ -319,14 +288,11 @@ public class LoggingEventBsonifierImpl implements LoggingEventBsonifier {
      * Adds the given value to the given key, except if it's null (in which case this method does
      * nothing).
      *
-     * @param bson
-     *            The BSON object to add the key/value to <i>(must not be null)</i>.
-     * @param key
-     *            The key of the object <i>(must not be null)</i>.
-     * @param value
-     *            The value of the object <i>(may be null)</i>.
+     * @param bson  The BSON object to add the key/value to <i>(must not be null)</i>.
+     * @param key   The key of the object <i>(must not be null)</i>.
+     * @param value The value of the object <i>(may be null)</i>.
      */
-    protected void nullSafePut(DBObject bson, final String key, final Object value) {
+    protected void nullSafePut(Document bson, final String key, final Object value) {
         if (value != null) {
             if (value instanceof String) {
                 String stringValue = (String) value;

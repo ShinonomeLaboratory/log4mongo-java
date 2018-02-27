@@ -1,7 +1,6 @@
 package org.log4mongo;
 
-import com.mongodb.BasicDBObject;
-import com.mongodb.DBObject;
+import org.bson.Document;
 import org.junit.Test;
 
 import java.lang.reflect.InvocationTargetException;
@@ -14,7 +13,7 @@ public class TestLoggingEventBsonifierImpl {
     public void testStringBuffer() throws NoSuchMethodException, IllegalAccessException,
             InvocationTargetException {
         LoggingEventBsonifierImplSubclass bsonifier = new LoggingEventBsonifierImplSubclass();
-        DBObject bson = new BasicDBObject();
+        Document bson = new Document();
         String key = "thekey";
         StringBuffer sb = new StringBuffer("thevalue");
         bsonifier.publicNullSafePut(bson, key, sb);
@@ -26,7 +25,7 @@ public class TestLoggingEventBsonifierImpl {
     // Replace this after extending Privateer to support superclasses in method signature
     public class LoggingEventBsonifierImplSubclass extends LoggingEventBsonifierImpl {
 
-        public void publicNullSafePut(DBObject bson, final String key, final Object value) {
+        public void publicNullSafePut(Document bson, final String key, final Object value) {
             nullSafePut(bson, key, value);
         }
 

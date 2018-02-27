@@ -17,9 +17,7 @@
 
 package org.log4mongo;
 
-import com.mongodb.DBObject;
 import com.mongodb.MongoException;
-import com.mongodb.util.JSON;
 import org.apache.log4j.spi.ErrorCode;
 import org.apache.log4j.spi.LoggingEvent;
 import org.bson.Document;
@@ -64,19 +62,19 @@ public class MongoDbPatternLayoutAppender extends MongoDbAppender {
     @Override
     protected void append(final LoggingEvent loggingEvent) {
         if (isInitialized()) {
-            DBObject bson = null;
+            Document bson = null;
             String json = layout.format(loggingEvent);
 
             if (json.length() > 0) {
-                Object obj = JSON.parse(json);
-                if (obj instanceof DBObject) {
-                    bson = (DBObject) obj;
+                Object obj = Document.parse(json);
+                if (obj instanceof Document) {
+                    bson = (Document) obj;
                 }
             }
 
             if (bson != null) {
                 try {
-                    getCollection().insertOne(new Document(bson.toMap()));
+                    getCollection().insertOne(bson);
                 } catch (MongoException e) {
                     errorHandler.error("Failed to insert document to MongoDB", e,
                             ErrorCode.WRITE_FAILURE);
