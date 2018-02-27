@@ -76,8 +76,8 @@ public class TestMongoDbAppender {
 
     @AfterClass
     public static void tearDownAfterClass() throws Exception {
-        MongoClient mongo = new MongoClient(TEST_MONGO_SERVER_HOSTNAME, TEST_MONGO_SERVER_PORT);
-        mongo.dropDatabase(TEST_DATABASE_NAME);
+        //MongoClient mongo = new MongoClient(TEST_MONGO_SERVER_HOSTNAME, TEST_MONGO_SERVER_PORT);
+        //mongo.dropDatabase(TEST_DATABASE_NAME);
     }
 
     @Before
@@ -242,6 +242,7 @@ public class TestMongoDbAppender {
         long dur = System.currentTimeMillis() - now;
         System.out.println("Milliseconds for MongoDbAppender to log " + NUM_MESSAGES + " messages:"
                 + dur);
+        Thread.sleep(2000);
         assertEquals(NUM_MESSAGES + 1, countLogEntries());
     }
 

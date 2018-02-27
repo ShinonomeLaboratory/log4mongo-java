@@ -16,6 +16,10 @@ log4j.appender.MongoDB.collectionName=log
 log4j.appender.MongoDB.userName=open
 log4j.appender.MongoDB.password=sesame
 
+log4j.appender.MongoDB.indexSetting=timestamp:1,level:hashed
+log4j.appender.MongoDB.batchWriteSetting=1000
+log4j.appender.MongoDB.timeoutMills=1892160000000,1892160000000,1892160000000,1892160000000,1892160000000,1892160000000
+
 # The layout property is required only if the MongoDbPatternLayoutAppender appender is used.
 #   If a custom PatternParser and custom PatternConverters are required to log additional data,
 #   the specified layout class must extend MongoDbPatternLayout. A ConversionPattern property

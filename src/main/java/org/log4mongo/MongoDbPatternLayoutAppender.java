@@ -66,10 +66,7 @@ public class MongoDbPatternLayoutAppender extends MongoDbAppender {
             String json = layout.format(loggingEvent);
 
             if (json.length() > 0) {
-                Object obj = Document.parse(json);
-                if (obj instanceof Document) {
-                    bson = (Document) obj;
-                }
+                bson = Document.parse(json);
             }
 
             if (bson != null) {

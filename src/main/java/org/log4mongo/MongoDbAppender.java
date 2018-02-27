@@ -18,16 +18,19 @@
 package org.log4mongo;
 
 import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 import com.mongodb.*;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
+import com.mongodb.client.model.IndexOptions;
 import org.apache.log4j.Level;
 import org.apache.log4j.spi.ErrorCode;
 import org.apache.log4j.spi.LoggingEvent;
 import org.bson.Document;
 
+import java.text.SimpleDateFormat;
 import java.util.*;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Log4J Appender that writes log events into a MongoDB document oriented database. Log events are
@@ -55,6 +58,7 @@ public class MongoDbAppender extends BsonAppender {
 
     private final static String MAX_TTL_MILLS_SETTING = "1892160000000,1892160000000,1892160000000,1892160000000,1892160000000,1892160000000";
 
+    private final static String DEFAULT_INDEX_SETTINGS = "timestamp:1,level:hashed";
     private WriteConcern concern;
 
     private String hostname = DEFAULT_MONGO_DB_HOSTNAME;
@@ -71,6 +75,16 @@ public class MongoDbAppender extends BsonAppender {
 
     private String writeConcern = null;
 
+    public String getIndexSetting() {
+        return indexSetting;
+    }
+
+    public void setIndexSetting(String indexSetting) {
+        this.indexSetting = indexSetting;
+    }
+
+    private String indexSetting = DEFAULT_INDEX_SETTINGS;
+
     private String timeoutMills = MAX_TTL_MILLS_SETTING;
 
     private String batchWriteSetting = "0";
@@ -80,6 +94,82 @@ public class MongoDbAppender extends BsonAppender {
     private MongoCollection<Document> collection = null;
 
     private boolean initialized = false;
+
+    private String lastCollectionName = "";
+
+    private final SimpleDateFormat formatHourInfo = new SimpleDateFormat("yyyyMMdd_HH");
+    private final SimpleDateFormat formatDayInfo = new SimpleDateFormat("yyyyMMdd");
+    private final SimpleDateFormat formatMonthInfo = new SimpleDateFormat("yyyyMM");
+
+
+    protected String getCollectionName() {
+        final Date nowInfo = new Date();
+        return collectionName
+                .replaceAll("__HOUR_INFO__", formatHourInfo.format(nowInfo))
+                .replaceAll("__DAY_INFO__", formatDayInfo.format(nowInfo))
+                .replaceAll("__MONTH_INFO__", formatMonthInfo.format(nowInfo));
+    }
+
+    private boolean isStop = false;
+
+    private class ListMonitor implements Runnable {
+        private final int sleepMills;
+
+        public ListMonitor(int sleepMills) {
+            this.sleepMills = sleepMills;
+        }
+
+        public boolean isRunning() {
+            return running;
+        }
+
+        private boolean running = false;
+
+        @Override
+        public void run() {
+            running = true;
+            while (!isStop) {
+                try {
+                    synchronized (dataBuffer) {
+                        if (!dataBuffer.isEmpty()) {
+                            getCollection().insertMany(dataBuffer);
+                            dataBuffer.clear();
+                            System.out.println("Data written to db by thread.");
+                        }
+                    }
+                    Thread.sleep(sleepMills);
+                } catch (InterruptedException e) {
+                    errorHandler.error("Error while iteration", e, 500);
+                }
+            }
+            running = false;
+        }
+    }
+
+    private final ListMonitor listMonitor = new ListMonitor(1000);
+    private final Thread listCleaner = new Thread(listMonitor);
+
+
+    /**
+     * @see org.apache.log4j.Appender#close()
+     */
+    public void close() {
+        isStop = true;
+
+        if (mongo != null) {
+            collection = null;
+            mongo.close();
+        }
+
+        while (listMonitor.isRunning()) {
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                //pass
+            }
+        }
+
+    }
 
     /**
      * @see org.apache.log4j.Appender#requiresLayout()
@@ -111,7 +201,7 @@ public class MongoDbAppender extends BsonAppender {
 
     private int batchWriteCount;
 
-    private final List<Document> writtingQueue = Lists.newArrayList();
+    private final List<Document> dataBuffer = Lists.newArrayList();
 
     /**
      * @see org.apache.log4j.AppenderSkeleton#activateOptions()
@@ -131,12 +221,19 @@ public class MongoDbAppender extends BsonAppender {
                 password = null;
             }
 
-            mongo = getMongo(getServerAddresses(hostname, port),
-                    (credentials != null) ? Lists.newArrayList(credentials) : null);
+            MongoClientOptions options = MongoClientOptions.builder()
+                    .compressorList(Lists.newArrayList(MongoCompressor.createSnappyCompressor()))
+                    .build();
+
+            mongo = getMongo(
+                    getServerAddresses(hostname, port),
+                    (credentials != null) ? Lists.newArrayList(credentials) : null,
+                    options
+            );
 
             MongoDatabase database = getDatabase(mongo, databaseName);
 
-            setCollection(database.getCollection(collectionName));
+            getCollection();
 
             final String[] splittedTimeout = getTimeoutMills().split(",");
             if (splittedTimeout.length != 6) {
@@ -151,6 +248,8 @@ public class MongoDbAppender extends BsonAppender {
 
             batchWriteCount = Integer.parseInt(batchWriteSetting);
 
+            listCleaner.start();
+
             initialized = true;
         } catch (Exception e) {
             errorHandler.error("Unexpected exception while initialising MongoDbAppender.", e,
@@ -159,23 +258,23 @@ public class MongoDbAppender extends BsonAppender {
     }
 
     /**
-     * @see org.log4mongo.BsonAppender#append(Document, LoggingEvent)
      * @param generatedDocument The BSON representation of a Logging Event that will be stored
-     * @param loggingEvent raw data for external using
+     * @param loggingEvent      raw data for external using
+     * @see org.log4mongo.BsonAppender#append(Document, LoggingEvent)
      */
     @Override
     public void append(Document generatedDocument, LoggingEvent loggingEvent) {
         if (initialized && generatedDocument != null) {
             try {
-                generatedDocument.append("timeout", new Date(getTimeoutSetting(loggingEvent.getLevel()) + System.currentTimeMillis()));
+                generatedDocument.append("log_timeout", new Date(getTimeoutSetting(loggingEvent.getLevel()) + System.currentTimeMillis()));
                 if (batchWriteCount <= 1) {
                     getCollection().insertOne(generatedDocument);
                 } else {
-                    synchronized (writtingQueue) {
-                        writtingQueue.add(generatedDocument);
-                        if (writtingQueue.size() >= batchWriteCount) {
-                            getCollection().insertMany(writtingQueue);
-                            writtingQueue.clear();
+                    synchronized (dataBuffer) {
+                        dataBuffer.add(generatedDocument);
+                        if (dataBuffer.size() >= batchWriteCount) {
+                            getCollection().insertMany(dataBuffer);
+                            dataBuffer.clear();
                         }
                     }
                 }
@@ -204,16 +303,16 @@ public class MongoDbAppender extends BsonAppender {
         }
     }
 
-    private MongoClient getMongo(List<ServerAddress> addresses, List<MongoCredential> credentials) {
+    private MongoClient getMongo(List<ServerAddress> addresses, List<MongoCredential> credentials, MongoClientOptions options) {
         if (credentials == null) {
             return this.getMongo(addresses);
         }
 
         if (addresses.size() < 2) {
-            return new MongoClient(addresses.get(0), credentials);
+            return new MongoClient(addresses.get(0), credentials, options);
         } else {
             // Replica set
-            return new MongoClient(addresses, credentials);
+            return new MongoClient(addresses, credentials, options);
         }
     }
 
@@ -223,18 +322,8 @@ public class MongoDbAppender extends BsonAppender {
      * @param collection The MongoDB collection to use when logging events.
      */
     public void setCollection(final MongoCollection<Document> collection) {
-        assert collection != null : "collection must not be null";
+        if (collection == null) throw new RuntimeException("collection must not be null");
         this.collection = collection;
-    }
-
-    /**
-     * @see org.apache.log4j.Appender#close()
-     */
-    public void close() {
-        if (mongo != null) {
-            collection = null;
-            mongo.close();
-        }
     }
 
     /**
@@ -264,8 +353,8 @@ public class MongoDbAppender extends BsonAppender {
      * @param port The port to set <i>(must not be null, empty or blank)</i>.
      */
     public void setPort(final String port) {
-        assert port != null : "port must not be null";
-        assert port.trim().length() > 0 : "port must not be empty or blank";
+        if (port == null) throw new RuntimeException("port must not be null");
+        if (port.trim().length() <= 0) throw new RuntimeException("port must not be empty or blank");
 
         this.port = port;
     }
@@ -282,18 +371,10 @@ public class MongoDbAppender extends BsonAppender {
      *                     blank)</i>.
      */
     public void setDatabaseName(final String databaseName) {
-        assert databaseName != null : "database must not be null";
-        assert databaseName.trim().length() > 0 : "database must not be empty or blank";
+        if (databaseName == null) throw new RuntimeException("database must not be null");
+        if (databaseName.trim().length() <= 0) throw new RuntimeException("database must not be empty or blank");
 
         this.databaseName = databaseName;
-    }
-
-    /**
-     * @return The collection used within the database in the MongoDB server <i>(will not be null,
-     * empty or blank)</i>.
-     */
-    public String getCollectionName() {
-        return collectionName;
     }
 
     /**
@@ -301,8 +382,8 @@ public class MongoDbAppender extends BsonAppender {
      *                       null, empty or blank)</i>.
      */
     public void setCollectionName(final String collectionName) {
-        assert collectionName != null : "collection must not be null";
-        assert collectionName.trim().length() > 0 : "collection must not be empty or blank";
+        if (collectionName == null) throw new RuntimeException("collection must not be null");
+        if (collectionName.trim().length() <= 0) throw new RuntimeException("collection must not be empty or blank");
 
         this.collectionName = collectionName;
     }
@@ -366,6 +447,26 @@ public class MongoDbAppender extends BsonAppender {
      * @return The MongoDB collection to which events are logged.
      */
     protected MongoCollection<Document> getCollection() {
+        final String currentName = getCollectionName();
+        if (!lastCollectionName.equals(currentName)) {
+            MongoDatabase db = getDatabase(mongo, databaseName);
+            if (!Sets.newHashSet(db.listCollectionNames()).contains(currentName)) {
+                MongoCollection<Document> coll = db.getCollection(currentName);
+                coll.createIndex(new Document("log_timeout", 1), new IndexOptions().expireAfter(0L, TimeUnit.SECONDS));
+                for (String indexSet : getIndexSetting().split(",")) {
+                    String[] indexSetDetail = indexSet.split(":");
+                    if (indexSetDetail.length == 2) {
+                        try {
+                            int indexInfo = Integer.parseInt(indexSetDetail[1]);
+                            coll.createIndex(new Document(indexSetDetail[0], indexInfo));
+                        } catch (Exception ex) {
+                            coll.createIndex(new Document(indexSetDetail[0], indexSetDetail[1]));
+                        }
+                    }
+                }
+            }
+            setCollection(db.getCollection(currentName));
+        }
         if (concern == null) {
             return collection;
         }

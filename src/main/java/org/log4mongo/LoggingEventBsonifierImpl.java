@@ -170,7 +170,6 @@ public class LoggingEventBsonifierImpl implements LoggingEventBsonifier {
      * @param bson          The BSON object to add the throwable info to <i>(must not be null)</i>.
      * @param throwableInfo The ThrowableInformation object to add to the BSON object <i>(may be null)</i>.
      */
-    @SuppressWarnings(value = "unchecked")
     protected void addThrowableInformation(Document bson, final ThrowableInformation throwableInfo) {
         if (throwableInfo != null) {
             Throwable currentThrowable = throwableInfo.getThrowable();
@@ -265,7 +264,6 @@ public class LoggingEventBsonifierImpl implements LoggingEventBsonifier {
      * @param className The class name to BSONify <i>(may be null)</i>.
      * @return The BSONified equivalent of the class name <i>(may be null)</i>.
      */
-    @SuppressWarnings(value = "unchecked")
     protected Document bsonifyClassName(final String className) {
         Document result = null;
         if (className != null && className.trim().length() > 0) {

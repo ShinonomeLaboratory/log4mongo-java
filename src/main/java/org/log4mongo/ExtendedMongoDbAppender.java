@@ -23,6 +23,21 @@ public class ExtendedMongoDbAppender extends MongoDbAppender {
 
     private Map<String, String> rootProperties = new LinkedHashMap<String, String>();
 
+    @Override
+    protected String getCollectionName() {
+        String collectionNameGenerated = super.getCollectionName();
+        for (Map.Entry<String, String> kv : rootProperties.entrySet()) {
+            collectionNameGenerated = collectionNameGenerated.replaceAll(
+                    String.format(
+                            "__EXT_%s__",
+                            kv.getKey().toUpperCase()
+                    ),
+                    kv.getValue()
+            );
+        }
+        return collectionNameGenerated;
+    }
+
     /**
      * @see org.apache.log4j.AppenderSkeleton#activateOptions()
      */
