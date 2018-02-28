@@ -73,6 +73,16 @@ public class MongoDbAppender extends BsonAppender {
 
     private String password = null;
 
+    public String getAuthorizeDB() {
+        return authorizeDB;
+    }
+
+    public void setAuthorizeDB(String authorizeDB) {
+        this.authorizeDB = authorizeDB;
+    }
+
+    private String authorizeDB = null;
+
     private String writeConcern = null;
 
     public String getIndexSetting() {
@@ -216,8 +226,8 @@ public class MongoDbAppender extends BsonAppender {
 
             MongoCredential credentials = null;
             if (userName != null && userName.trim().length() > 0) {
-                credentials = MongoCredential.createCredential(userName, databaseName,
-                        password.toCharArray());
+                credentials = MongoCredential.createCredential(userName,
+                        authorizeDB == null ? databaseName : authorizeDB, password.toCharArray());
                 password = null;
             }
 
@@ -227,7 +237,7 @@ public class MongoDbAppender extends BsonAppender {
 
             mongo = getMongo(
                     getServerAddresses(hostname, port),
-                    (credentials != null) ? Lists.newArrayList(credentials) : null,
+                    credentials,
                     options
             );
 
@@ -303,16 +313,16 @@ public class MongoDbAppender extends BsonAppender {
         }
     }
 
-    private MongoClient getMongo(List<ServerAddress> addresses, List<MongoCredential> credentials, MongoClientOptions options) {
-        if (credentials == null) {
+    private MongoClient getMongo(List<ServerAddress> addresses, MongoCredential credential, MongoClientOptions options) {
+        if (credential == null) {
             return this.getMongo(addresses);
         }
 
         if (addresses.size() < 2) {
-            return new MongoClient(addresses.get(0), credentials, options);
+            return new MongoClient(addresses.get(0), credential, options);
         } else {
             // Replica set
-            return new MongoClient(addresses, credentials, options);
+            return new MongoClient(addresses, credential, options);
         }
     }
 
@@ -422,7 +432,14 @@ public class MongoDbAppender extends BsonAppender {
      */
     public void setWriteConcern(final String writeConcern) {
         this.writeConcern = writeConcern;
-        concern = WriteConcern.valueOf(writeConcern);
+        String[] writeConcernConfig = writeConcern.split(",");
+        if (writeConcernConfig.length == 1) {
+            concern = WriteConcern.valueOf(writeConcern);
+        } else if (writeConcernConfig.length == 2) {
+            concern = WriteConcern.valueOf(writeConcernConfig[0]).withWTimeout(Long.parseLong(writeConcernConfig[1]), TimeUnit.MILLISECONDS);
+        } else {
+            throw new RuntimeException("Invalid write concern setting" + writeConcern);
+        }
     }
 
     public WriteConcern getConcern() {
