@@ -466,6 +466,7 @@ public class MongoDbAppender extends BsonAppender {
                 }
             }
             setCollection(db.getCollection(currentName));
+            lastCollectionName = currentName;
         }
         if (concern == null) {
             return collection;
