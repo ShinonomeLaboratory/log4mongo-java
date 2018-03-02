@@ -11,7 +11,7 @@ This project forked from：[RobertStewart/log4mongo-java](https://github.com/Rob
 
 Major new features updated:
 
-1. Support batch write for higher performance;
+1. <del>Support batch write for higher performance;</del>
 2. Support timeout, delete logs automatically after expired, and you can set different timeout for different log level.
 3. Support auto index creation for higher query performance, but the shard-index should be set manually by different senses for higher performance and avoid unbalance between different shards in cluster mode;
 4. support create different collection by day/month/user-defined information/hour to avoid single collection too large (not recommended on my point)

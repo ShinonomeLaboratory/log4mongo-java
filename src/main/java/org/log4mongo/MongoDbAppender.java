@@ -22,6 +22,7 @@ import com.google.common.collect.Sets;
 import com.mongodb.*;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
+import com.mongodb.client.MongoIterable;
 import com.mongodb.client.model.IndexOptions;
 import org.apache.log4j.Level;
 import org.apache.log4j.spi.ErrorCode;
@@ -97,8 +98,6 @@ public class MongoDbAppender extends BsonAppender {
 
     private String timeoutMills = MAX_TTL_MILLS_SETTING;
 
-    private String batchWriteSetting = "0";
-
     private MongoClient mongo = null;
 
     private MongoCollection<Document> collection = null;
@@ -120,63 +119,15 @@ public class MongoDbAppender extends BsonAppender {
                 .replaceAll("__MONTH_INFO__", formatMonthInfo.format(nowInfo));
     }
 
-    private boolean isStop = false;
-
-    private class ListMonitor implements Runnable {
-        private final int sleepMills;
-
-        public ListMonitor(int sleepMills) {
-            this.sleepMills = sleepMills;
-        }
-
-        public boolean isRunning() {
-            return running;
-        }
-
-        private boolean running = false;
-
-        @Override
-        public void run() {
-            running = true;
-            while (!isStop) {
-                try {
-                    synchronized (dataBuffer) {
-                        if (!dataBuffer.isEmpty()) {
-                            getCollection().insertMany(dataBuffer);
-                            dataBuffer.clear();
-                            System.out.println("Data written to db by thread.");
-                        }
-                    }
-                    Thread.sleep(sleepMills);
-                } catch (InterruptedException e) {
-                    errorHandler.error("Error while iteration", e, 500);
-                }
-            }
-            running = false;
-        }
-    }
-
-    private final ListMonitor listMonitor = new ListMonitor(1000);
-    private final Thread listCleaner = new Thread(listMonitor);
-
 
     /**
      * @see org.apache.log4j.Appender#close()
      */
     public void close() {
-        isStop = true;
 
         if (mongo != null) {
             collection = null;
             mongo.close();
-        }
-
-        while (listMonitor.isRunning()) {
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException e) {
-                //pass
-            }
         }
 
     }
@@ -208,8 +159,6 @@ public class MongoDbAppender extends BsonAppender {
                 return 1892160000L;
         }
     }
-
-    private int batchWriteCount;
 
     private final List<Document> dataBuffer = Lists.newArrayList();
 
@@ -256,10 +205,6 @@ public class MongoDbAppender extends BsonAppender {
                 }
             }
 
-            batchWriteCount = Integer.parseInt(batchWriteSetting);
-
-            listCleaner.start();
-
             initialized = true;
         } catch (Exception e) {
             errorHandler.error("Unexpected exception while initialising MongoDbAppender.", e,
@@ -276,19 +221,15 @@ public class MongoDbAppender extends BsonAppender {
     public void append(Document generatedDocument, LoggingEvent loggingEvent) {
         if (initialized && generatedDocument != null) {
             try {
-                generatedDocument.append("log_timeout", new Date(getTimeoutSetting(loggingEvent.getLevel()) + System.currentTimeMillis()));
-                if (batchWriteCount <= 1) {
-                    getCollection().insertOne(generatedDocument);
-                } else {
-                    synchronized (dataBuffer) {
-                        dataBuffer.add(generatedDocument);
-                        if (dataBuffer.size() >= batchWriteCount) {
-                            getCollection().insertMany(dataBuffer);
-                            dataBuffer.clear();
-                        }
-                    }
+                final Date expiredDate = new Date(getTimeoutSetting(loggingEvent.getLevel()) + System.currentTimeMillis());
+                generatedDocument.append("log_timeout", expiredDate);
+                getCollection().insertOne(generatedDocument);
+                if (!dataBuffer.isEmpty()) {
+                    getCollection().insertMany(dataBuffer);
+                    dataBuffer.clear();
                 }
             } catch (MongoException e) {
+                dataBuffer.add(generatedDocument);
                 errorHandler.error("Failed to insert document to MongoDB", e, ErrorCode.WRITE_FAILURE);
             }
         }
@@ -466,8 +407,12 @@ public class MongoDbAppender extends BsonAppender {
     protected MongoCollection<Document> getCollection() {
         final String currentName = getCollectionName();
         if (!lastCollectionName.equals(currentName)) {
-            MongoDatabase db = getDatabase(mongo, databaseName);
-            if (!Sets.newHashSet(db.listCollectionNames()).contains(currentName)) {
+            final MongoDatabase db = getDatabase(mongo, databaseName);
+            final Set<String> collectionSet = Sets.newHashSet();
+            for (String c : db.listCollectionNames()) {
+                collectionSet.add(c);
+            }
+            if (!collectionSet.contains(currentName)) {
                 MongoCollection<Document> coll = db.getCollection(currentName);
                 coll.createIndex(new Document("log_timeout", 1), new IndexOptions().expireAfter(0L, TimeUnit.SECONDS));
                 for (String indexSet : getIndexSetting().split(",")) {
@@ -567,11 +512,4 @@ public class MongoDbAppender extends BsonAppender {
         this.timeoutMills = timeoutMills;
     }
 
-    public String getBatchWriteSetting() {
-        return batchWriteSetting;
-    }
-
-    public void setBatchWriteSetting(String batchWriteSetting) {
-        this.batchWriteSetting = batchWriteSetting;
-    }
 }

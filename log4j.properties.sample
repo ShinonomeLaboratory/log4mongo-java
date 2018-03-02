@@ -1,9 +1,9 @@
 # Set the root logger to
-log4j.rootLogger=error, MongoDB
+log4j.rootLogger=all, MongoDB
 
 # MongoDB appender classname
 # To log with a PatternLayout, use org.log4mongo.MongoDbPatternLayoutAppender
-log4j.appender.MongoDB=org.log4mongo.MongoDbAppender
+log4j.appender.MongoDB=org.log4mongo.ExtendedMongoDbAppender
 
 # MongoDB appender properties
 #  All are optional - defaults shown below (except for userName and password, which default to undefined)
@@ -13,12 +13,13 @@ log4j.appender.MongoDB.hostname=localhost
 log4j.appender.MongoDB.port=27017
 log4j.appender.MongoDB.databaseName=log4mongo
 log4j.appender.MongoDB.collectionName=log
-log4j.appender.MongoDB.userName=open
-log4j.appender.MongoDB.password=sesame
+# log4j.appender.MongoDB.userName=open
+# log4j.appender.MongoDB.password=sesame
 
 log4j.appender.MongoDB.indexSetting=timestamp:1,level:hashed
-log4j.appender.MongoDB.batchWriteSetting=1000
-log4j.appender.MongoDB.timeoutMills=1892160000000,1892160000000,1892160000000,1892160000000,1892160000000,1892160000000
+# Deprecated
+# log4j.appender.MongoDB.batchWriteSetting=1000
+log4j.appender.MongoDB.timeoutMills=3600000,86400000,1209600000,8640000000,1892160000000,1892160000000
 
 # The layout property is required only if the MongoDbPatternLayoutAppender appender is used.
 #   If a custom PatternParser and custom PatternConverters are required to log additional data,
