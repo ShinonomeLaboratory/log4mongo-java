@@ -18,6 +18,8 @@ Major new features updated:
 5. Use new data type for robust and performance
 6. Support compress while transferring data to mongodb
 7. Save logs on in a buffer while writing failed maybe caused by network interruption or mongodb crash.
+8. Try to JSONize message if message starts with "{" or "["
+
 
 ## TODOs
 

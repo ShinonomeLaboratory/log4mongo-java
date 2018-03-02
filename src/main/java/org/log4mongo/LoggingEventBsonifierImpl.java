@@ -24,6 +24,7 @@ import org.apache.log4j.spi.LocationInfo;
 import org.apache.log4j.spi.LoggingEvent;
 import org.apache.log4j.spi.ThrowableInformation;
 import org.bson.Document;
+
 import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -116,7 +117,17 @@ public class LoggingEventBsonifierImpl implements LoggingEventBsonifier {
             result.put(KEY_TIMESTAMP, new Date(loggingEvent.getTimeStamp()));
             nullSafePut(result, KEY_LEVEL, loggingEvent.getLevel().toString());
             nullSafePut(result, KEY_THREAD, loggingEvent.getThreadName());
-            nullSafePut(result, KEY_MESSAGE, loggingEvent.getRenderedMessage());
+            final String logMessage = loggingEvent.getRenderedMessage();
+            if (logMessage.startsWith("{") || logMessage.startsWith("[")) {
+                try {
+                    nullSafePut(result, KEY_MESSAGE, Document.parse(logMessage));
+                } catch (Exception ex) {
+                    nullSafePut(result, KEY_MESSAGE, logMessage);
+                }
+            } else {
+                nullSafePut(result, KEY_MESSAGE, logMessage);
+            }
+
             nullSafePut(result, KEY_LOGGER_NAME, bsonifyClassName(loggingEvent.getLoggerName()));
 
             addMDCInformation(result, loggingEvent.getProperties());
