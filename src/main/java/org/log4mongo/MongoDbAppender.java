@@ -17,17 +17,18 @@
 
 package org.log4mongo;
 
+import ch.qos.logback.classic.LoggerContext;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.mongodb.*;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
-import com.mongodb.client.MongoIterable;
 import com.mongodb.client.model.IndexOptions;
 import org.apache.log4j.Level;
 import org.apache.log4j.spi.ErrorCode;
 import org.apache.log4j.spi.LoggingEvent;
 import org.bson.Document;
+import org.slf4j.LoggerFactory;
 
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -176,7 +177,7 @@ public class MongoDbAppender extends BsonAppender {
             MongoCredential credentials = null;
             if (userName != null && userName.trim().length() > 0) {
                 credentials = MongoCredential.createCredential(userName,
-                        authorizeDB == null ? databaseName : authorizeDB, password.toCharArray());
+                        authorizeDB == null ? databaseName : getAuthorizeDB(), password.toCharArray());
                 password = null;
             }
 
@@ -189,10 +190,6 @@ public class MongoDbAppender extends BsonAppender {
                     credentials,
                     options
             );
-
-            MongoDatabase database = getDatabase(mongo, databaseName);
-
-            getCollection();
 
             final String[] splittedTimeout = getTimeoutMills().split(",");
             if (splittedTimeout.length != 6) {
@@ -408,10 +405,7 @@ public class MongoDbAppender extends BsonAppender {
         final String currentName = getCollectionName();
         if (!lastCollectionName.equals(currentName)) {
             final MongoDatabase db = getDatabase(mongo, databaseName);
-            final Set<String> collectionSet = Sets.newHashSet();
-            for (String c : db.listCollectionNames()) {
-                collectionSet.add(c);
-            }
+            final Set<String> collectionSet = Sets.newHashSet(db.listCollectionNames());
             if (!collectionSet.contains(currentName)) {
                 MongoCollection<Document> coll = db.getCollection(currentName);
                 coll.createIndex(new Document("log_timeout", 1), new IndexOptions().expireAfter(0L, TimeUnit.SECONDS));
@@ -512,4 +506,9 @@ public class MongoDbAppender extends BsonAppender {
         this.timeoutMills = timeoutMills;
     }
 
+    static {
+        // 屏蔽MongoDB自带的Log4j日志输出，本身烦得要死，简直还嫌不够乱
+        LoggerContext loggerContext = (LoggerContext) LoggerFactory.getILoggerFactory();
+        loggerContext.getLogger("org.mongodb.driver").setLevel(ch.qos.logback.classic.Level.OFF);
+    }
 }

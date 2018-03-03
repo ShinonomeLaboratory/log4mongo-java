@@ -8,7 +8,8 @@
 	<groupId>org.log4mongo</groupId>
 	<artifactId>log4mongo-java-shinonome</artifactId>
 	<name>log4mongo-java-shinonome</name>
-    <version>1.0</version>
+    <version>1.0.4-SNAPSHOT</version>
+
     <packaging>jar</packaging>
 	<description>Fork and changed from https://github.com/RobertStewart/log4mongo-java by Yuan Yifan</description>
 
@@ -105,6 +106,13 @@
 			<artifactId>privateer</artifactId>
 			<version>0.1.1</version>
 			<scope>test</scope>
+		</dependency>
+
+		<dependency>
+			<groupId>ch.qos.logback</groupId>
+			<artifactId>logback-classic</artifactId>
+			<version>1.1.11</version>
+			<scope>provided</scope>
 		</dependency>
 
 	</dependencies>
