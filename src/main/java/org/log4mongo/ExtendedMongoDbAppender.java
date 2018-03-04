@@ -21,7 +21,7 @@ public class ExtendedMongoDbAppender extends MongoDbAppender {
 
     private Document constants;
 
-    private Map<String, String> rootProperties = new LinkedHashMap<String, String>();
+    private Map<String, String> rootProperties = new LinkedHashMap<>();
 
     @Override
     protected String getCollectionName() {

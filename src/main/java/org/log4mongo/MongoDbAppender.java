@@ -17,19 +17,17 @@
 
 package org.log4mongo;
 
-import ch.qos.logback.classic.LoggerContext;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.mongodb.*;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.IndexOptions;
+import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.Level;
 import org.apache.log4j.spi.ErrorCode;
 import org.apache.log4j.spi.LoggingEvent;
 import org.bson.Document;
-import org.slf4j.LoggerFactory;
-
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -61,6 +59,7 @@ public class MongoDbAppender extends BsonAppender {
     private final static String MAX_TTL_MILLS_SETTING = "1892160000000,1892160000000,1892160000000,1892160000000,1892160000000,1892160000000";
 
     private final static String DEFAULT_INDEX_SETTINGS = "timestamp:1,level:hashed";
+
     private WriteConcern concern;
 
     private String hostname = DEFAULT_MONGO_DB_HOSTNAME;
@@ -181,6 +180,7 @@ public class MongoDbAppender extends BsonAppender {
                 password = null;
             }
 
+            // Make configuration here
             MongoClientOptions options = MongoClientOptions.builder()
                     .compressorList(Lists.newArrayList(MongoCompressor.createSnappyCompressor()))
                     .build();
@@ -506,9 +506,12 @@ public class MongoDbAppender extends BsonAppender {
         this.timeoutMills = timeoutMills;
     }
 
-    static {
-        // 屏蔽MongoDB自带的Log4j日志输出，本身烦得要死，简直还嫌不够乱
-        LoggerContext loggerContext = (LoggerContext) LoggerFactory.getILoggerFactory();
-        loggerContext.getLogger("org.mongodb.driver").setLevel(ch.qos.logback.classic.Level.OFF);
+    static{
+
+        /**
+         * Loading Log4j configuration while stating
+         */
+        BasicConfigurator.configure();
     }
+
 }

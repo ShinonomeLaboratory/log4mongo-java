@@ -21,6 +21,9 @@ Major new features updated:
 8. Try to JSONize message if message starts with "{" or "["
 9. Solve conflict to SLF4J 
 
+## Document
+
+
 ## TODOs
 
 - Write more unit tests
